@@ -31,14 +31,15 @@ def run_scenario(
             process_times=process_times,
             simulation_time=simulation_time,
             path_events=path_events,
+            path_buffer=path_buffer,
             save_results=save_results,
             capa_init=capa_init,
             capa_max=capa_max,
             capa_inf=capa_inf
         )
     # get buffer and events
-    events = get_events(path='events.csv')
-    buffer = get_buffer(path='buffer.csv')
+    events = get_events(path=path_events)
+    buffer = get_buffer(path=path_buffer)
 
     # check if ap-file exits
     if not os.path.exists(path_active_periods):
@@ -53,12 +54,13 @@ def run_scenario(
     return events, buffer, active_periods
 
 
+
 scenario_1 = {
     'process_times':  [2, 5, 2, 5, 2],
-    'simulation_time': 1000,
-    'path_buffer': 'buffer_10k',
-    'path_events': 'events_10k',
-    'path_active_periods': 'active_periods_10k',
+    'simulation_time': 10000,
+    'path_buffer': 'buffer_10k.csv',
+    'path_events': 'events_10k.csv',
+    'path_active_periods': 'active_periods_10k.csv',
     'save_results': True,
     'capa_init': 1,
     'capa_max': 5,
