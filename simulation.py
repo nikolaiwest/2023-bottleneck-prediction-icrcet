@@ -58,6 +58,7 @@ class Factory:
     def __init__(self,
                  process_times: 'list[int]',
                  path_events: str,
+                 path_buffer: str,
                  save_results: bool,
                  capa_init: int,
                  capa_max: int,
@@ -67,6 +68,7 @@ class Factory:
         self.env = simpy.Environment()
         self.process_times = process_times
         self.path_events = path_events
+        self.path_buffer = path_buffer
         self.save_results = save_results
         self.capa_init = capa_init
         self.capa_max = capa_max
@@ -174,6 +176,7 @@ def run_simulation(
     # initialize factory
     factory = Factory(
         process_times=process_times,
+        path_buffer=path_buffer,
         path_events=path_events,
         save_results=save_results,
         capa_init=capa_init,
