@@ -11,20 +11,24 @@ from auxiliaries import (
 
 
 def run_scenario(
-    process_times: 'list[float]',
-    simulation_time: int,
-    path_buffer: str,
-    path_events: str,
-    path_active_periods: str,
+    scenario_name : str, 
+    process_times : 'list[float]',
+    simulation_time : int,
+    path : str,
     save_results: bool,
+    verbose: bool,
     capa_init: int,
     capa_max: int,
     capa_inf: int,
 ) -> None:
+    if verbose:
+        print(f'{dt.datetime.now().strftime("%H:%M:%S")}: Now running: \n{scenario_name}')
 
-    print(f'{dt.datetime.now().strftime("%H:%M:%S")}: Running: \n{scenario_1}')
+    path_events = f"{path}events{scenario_name}.csv"
+    path_buffer = f"{path}buffer{scenario_name}.csv"
+    path_active_periods = f"{path}active_periods{scenario_name}.csv"
 
-    # check if simulation results exit
+    # check if simulation results exit already
     if not os.path.exists(path_buffer) or not os.path.exists(path_events):
         # if not, run simulation and save data
         run_simulation(
@@ -41,30 +45,30 @@ def run_scenario(
     events = get_events(path=path_events)
     buffer = get_buffer(path=path_buffer)
 
-    # check if ap-file exits
+    # check if ap-file exits already
     if not os.path.exists(path_active_periods):
         # if not, calculate and save the active periods
         active_periods = calc_active_periods(events)
-        active_periods.to_csv(path_active_periods)
+        if save_results:
+            active_periods.to_csv(path_active_periods)
     else:
         # get ap
         active_periods = get_active_periods(path_active_periods)
 
-    print(f'{dt.datetime.now().strftime("%H:%M:%S")}: Finished!')
+    if verbose:
+        print(f'{dt.datetime.now().strftime("%H:%M:%S")}: Finished scenario {scenario_name}.')
     return events, buffer, active_periods
 
-
-
-scenario_1 = {
-    'process_times':  [2, 5, 2, 5, 2],
+scenario = {
+    'scenario_name': "_10k_S2-S4+25%_001",
+    'process_times':  [2, 2.25, 2, 2.25, 2],
     'simulation_time': 10000,
-    'path_buffer': 'buffer_10k.csv',
-    'path_events': 'events_10k.csv',
-    'path_active_periods': 'active_periods_10k.csv',
+    'path' : 'data/',
     'save_results': True,
+    'verbose' : True,
     'capa_init': 1,
     'capa_max': 5,
     'capa_inf': 5,
 }
 
-events_s1, buffer_s1, active_periods_s1 = run_scenario(**scenario_1)
+events, buffer, active_periods = run_scenario(**scenario)
