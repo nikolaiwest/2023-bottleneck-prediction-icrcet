@@ -59,16 +59,27 @@ def run_scenario(
         print(f'{dt.datetime.now().strftime("%H:%M:%S")}: Finished scenario {scenario_name}.')
     return events, buffer, active_periods
 
-scenario = {
-    'scenario_name': "_10k_S2-S4+25%_001",
-    'process_times':  [2, 2.25, 2, 2.25, 2],
-    'simulation_time': 10000,
-    'path' : 'data/',
-    'save_results': True,
-    'verbose' : True,
-    'capa_init': 1,
-    'capa_max': 5,
-    'capa_inf': 5,
-}
 
-events, buffer, active_periods = run_scenario(**scenario)
+def _run(i): 
+    if i < 10:
+        num = f"00{i}"
+    elif i <100:
+        num = f"0{i}"
+    else:
+        num = str(i)
+    scenario = {
+        'scenario_name': f"_10k_S2-S4+25%_{num}",
+        'process_times':  [2, 2.25, 2, 2.25, 2],
+        'simulation_time': 10000,
+        'path' : 'data/',
+        'save_results': True,
+        'verbose' : False,
+        'capa_init': 1,
+        'capa_max': 5,
+        'capa_inf': 5,
+    }
+    events, buffer, active_periods = run_scenario(**scenario)
+
+
+from joblib import Parallel, delayed
+Parallel(n_jobs=12)(delayed(_run)(i) for i in range(100, 112))

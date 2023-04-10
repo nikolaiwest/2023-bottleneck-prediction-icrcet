@@ -202,7 +202,9 @@ def run_simulation(
     # run simulation
     print(
         f'Running simulation with {len(process_times)} stations for {simulation_time} steps. ')
-    for t in tqdm(range(1, simulation_time)):
+    #for t in tqdm(range(1, simulation_time)):
+    for t in range(1, simulation_time):
+
         # iterate one simulation step
         factory.env.run(until=t)
         # save current buffer levels to file

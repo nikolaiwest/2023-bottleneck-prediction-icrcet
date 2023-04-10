@@ -23,7 +23,7 @@ def station_remains_active(events, num_station, num_job) -> bool:
 
 
 def get_active_periods(path) -> pd.DataFrame:
-    return pd.read_csv(path)
+    return pd.read_csv(path, index_col=0)
 
 
 def get_buffer(path) -> pd.DataFrame:
@@ -92,11 +92,14 @@ def calc_active_periods(events: pd.DataFrame) -> pd.DataFrame:
     print(
         f'Calculating the active periods for all {len(station_names)} stations.')
     for index, _ in active_periods.iterrows():
+        #print(f"- getting period resets: {index}/{events_length}", flush=True)
         for (station_name, station_num) in zip(station_names, station_nums):
             active_periods.loc[index, station_name] = _get_t_of_first_active(
                 events, index, station_num)
+            
     # repeat iteration to update active periods for all timesteps
     for index, _ in active_periods.iterrows():
+        #print(f"- getting remaining time: {index}/{events_length}", flush=True)
         for (station_name, station_num) in zip(station_names, station_nums):
             if active_periods.loc[index, station_name] != 0:
                 active_periods.loc[index, station_name] = index - \
@@ -109,3 +112,5 @@ def calc_active_periods(events: pd.DataFrame) -> pd.DataFrame:
     # determine bottleneck station
     active_periods['bottleneck'] = active_periods.idxmax(axis=1)
     return active_periods
+#%%
+
