@@ -1,4 +1,3 @@
-# %%
 import pickle 
 from prediction import BottleneckPrediction
 
@@ -18,21 +17,4 @@ params = {
 bottleneck_prediction = BottleneckPrediction(**params)
 bottleneck_prediction.run()
 
-
-#%%
-def save_object(obj, filename):
-    with open(filename, 'wb') as outp:  # Overwrites any existing file.
-        pickle.dump(obj, outp)
-# sample usage
-save_object(bottleneck_prediction, f'models/{bottleneck_prediction.mdl_scenario}.pkl')
-
-#%%
-
-
-
-#%%
-
-bottleneck_prediction.plot_some_predictions(stride=50)
-
-#%%
 

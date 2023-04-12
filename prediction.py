@@ -83,7 +83,7 @@ class BottleneckPrediction():
         self.describe_pred()
 
         # 
-        self.plot_some_predictions(stride=25)
+        self.plot_some_predictions(stride=1000)
 
     def load_sim_data(
         self,
@@ -109,30 +109,56 @@ class BottleneckPrediction():
             an unlimited capacity.'''
         
         # import from raw simulation data from path using the scenario name
-        df_buffer = get_buffer(f"{path}buffer{scenario_name}.csv")
-        df_actper = get_active_periods(f"{path}active_periods{scenario_name}.csv")
+        data_buffer = get_buffer(f"{path}buffer{scenario_name}.csv")
+        data_actper = get_active_periods(f"{path}active_periods{scenario_name}.csv")
 
-        # aggregate buffer to every n observations
-        df_buffer = df_buffer.groupby(np.arange(len(df_buffer))//self.aggreg_lvl).mean() # aggregate
-
-        # add final bottleneck states "0" and split before aggregation
-
+        # get the number of observations after aggregation
         num_of_splits = int(SIM_LENGTH/self.aggreg_lvl)
-        ar_actper = np.split(np.concatenate((df_actper["bottleneck"], ["S0"]*(SIM_LENGTH - len(df_actper)))), num_of_splits, axis=0)
 
-        # aggregate by group and get most frequent bottleneck state 
-        ar_actper = [self._most_common(x.tolist()) for x in ar_actper]
+        # make data_buffer same length with simulation length 
+        if len(data_buffer)!=SIM_LENGTH: 
+            # shorten df (just as backup)
+            if len(data_buffer) > SIM_LENGTH:
+                df_buffer = data_buffer[:SIM_LENGTH]
+            else: 
+                # fill df with last rows
+                for i in range(len(data_buffer), SIM_LENGTH):
+                    # copy last row and append 
+                    data_buffer.loc[i] = data_buffer.loc[i-1]
+                    # increase "t"
+                    data_buffer.loc[i][0] = data_buffer.loc[i-1][0]+1
+
+        # make df_actper same length with simulation length 
+        if len(data_actper)!=SIM_LENGTH: 
+            # shorten df (again, just a fallback)
+            if len(data_actper) > SIM_LENGTH: 
+                df_actper = data_actper[:SIM_LENGTH]
+            else: 
+                # fill df with last rows
+                for i in range(len(data_actper), SIM_LENGTH):
+                    # copy last row and append 
+                    data_actper.loc[i] = data_actper.loc[i-1]
+
+        # aggregate buffer to every n observation
+        data_buffer = data_buffer.groupby(np.arange(len(data_buffer))//self.aggreg_lvl).mean()
+        data_buffer = data_buffer[:num_of_splits]
+
+        # aggregate bottleneck info for every n observation
+        assert len(data_buffer)==num_of_splits, "Aggregation will result in unequal lengths"
+        data_actper = data_actper["bottleneck"][:self.aggreg_lvl*num_of_splits]
+        data_actper = np.split(data_actper, num_of_splits, axis=0)
+        data_actper = [self._most_common(x.tolist()) for x in data_actper]
 
         # merge both dfs and convert "bottleneck" all columns to float
-        df = df_buffer
-        df["bottleneck"] = [v[1:] for v in ar_actper]
-        df =  df.astype(float)
+        data_return = data_buffer
+        data_return["bottleneck"] = [v[1:] for v in data_actper]
+        data_return =  data_return.astype(float)
 
         # select and return only the relevant columns
-        df = df.loc[:, SIM_STATIONS + ["bottleneck"]] 
+        data_return = data_return.loc[:, SIM_STATIONS + ["bottleneck"]] 
         # omitting "B0" for it is almost constant (close to max buffer)
         # omitting "B_last" for it increased indefinitely
-        return df[df.columns].to_numpy() 
+        return data_return[data_return.columns].to_numpy() 
 
 
     def prepare_data(
@@ -193,23 +219,24 @@ class BottleneckPrediction():
             clipvalue=1.0)
 
         # get the number of features from the training data 
-        n_features = self.x_train.shape[2]*len(SIM_STATIONS+1) if self.iohey else self.x_train.shape[2]
+        n_features = self.x_train.shape[2]*len(SIM_STATIONS)+1 if self.iohey else self.x_train.shape[2]
 
         # define the model
         model = Sequential()
         # input layer 
         model.add(
             LSTM(
-                units=256, 
+                units=128, 
                 activation='relu', 
                 return_sequences=True, 
-                input_shape=(self.n_steps_in, n_features)
+                input_shape=(self.n_steps_in, n_features),
+                recurrent_dropout=0.1
                 )
             )
         # hidden layer 
         model.add(
             LSTM(
-                units=256, 
+                units=128, 
                 activation='relu'
                 )
             )
@@ -217,7 +244,6 @@ class BottleneckPrediction():
         model.add(
             Dense(
                 units = self.n_steps_out,
-                activation = None,
                 use_bias = True,
                 kernel_initializer = "glorot_uniform",
                 bias_initializer = "zeros",
@@ -236,7 +262,7 @@ class BottleneckPrediction():
         self.cp_stopper = EarlyStopping(
             monitor='loss',
             min_delta=0,
-            patience=30,
+            patience=50,
             verbose=0,
             mode='auto',
             baseline=None,
@@ -259,7 +285,7 @@ class BottleneckPrediction():
             epochs = self.training_epochs, 
             verbose = 1, 
             shuffle = True,
-            batch_size = 64, 
+            batch_size = 16, 
             callbacks = [self.cp_stopper, self.cp_saver]) 
 
 
@@ -285,9 +311,10 @@ class BottleneckPrediction():
         # describe training history 
         plt.plot(self.model_hist.history['loss'], label="loss")
         plt.plot(self.model_hist.history['val_loss'], label="val_loss")
-        plt.title("loss")
+        plt.title(f"{self.mdl_scenario}_loss")
         plt.ylim([0,2.5])
         plt.show()
+        plt.savefig(f"{self.mdl_scenario}_loss.png", format="png")
 
 
     def describe_pred(self) -> None: 
@@ -314,9 +341,10 @@ class BottleneckPrediction():
 
         # plot the evaluation 
         plt.plot(eval_list)
+        plt.title(self.mdl_scenario)
         plt.ylim(0, 1)
-        plt.xlim(0, 25)
-
+        #plt.xlim(0, 25)
+        plt.savefig(f"{self.mdl_scenario}_eval.png", format="png")
 
     def plot_some_predictions(self, stride): 
 
