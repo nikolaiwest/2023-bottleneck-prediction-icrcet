@@ -9,15 +9,15 @@ import matplotlib.pyplot as plt
 from datetime import datetime as dt 
 
 from typing import Tuple
-from keras.models import Sequential, load_model
-from keras.layers import LSTM, Dense
-from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.optimizers import Adam
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.optimizers import Adam
 
 
 # parameter selected according to the simulation scenario
 SIM_LENGTH = 10000 
-SIM_STATIONS = ["B1", "B2", "B3", "B4"]
+SIM_STATIONS = ["B1", "B2", "B3", "B4"] # stations under consideration
 SIM_SCENARIO = "10k_S2-S4+25%"
 
 
@@ -30,8 +30,8 @@ class BottleneckPrediction():
         n_steps_in : int,
         aggreg_lvl : int,
         stride_lvl : int,
-        range_train : range,
-        range_test : range, 
+        range_train : list,
+        range_test : list, 
         training_epochs : int, 
         include_bottleneck_in_training_data : bool, 
         include_one_hot_encoding_of_y_label : bool, 
@@ -55,6 +55,9 @@ class BottleneckPrediction():
 
         # custom name of the simulation scenario
         self.sim_scenario = SIM_SCENARIO
+        # custom list of stations
+        self.sim_stations = SIM_STATIONS
+        self.num_stations = len(self.sim_stations)
         # custom name to store the best model 
         self.mdl_scenario = mdl_scenario
 
@@ -83,7 +86,7 @@ class BottleneckPrediction():
         self.describe_pred()
 
         # 
-        self.plot_some_predictions(stride=1000)
+        self.plot_some_predictions(stride=int(len(self.y_pred)/10))
 
     def load_sim_data(
         self,
@@ -155,7 +158,7 @@ class BottleneckPrediction():
         data_return =  data_return.astype(float)
 
         # select and return only the relevant columns
-        data_return = data_return.loc[:, SIM_STATIONS + ["bottleneck"]] 
+        data_return = data_return.loc[:, self.sim_stations + ["bottleneck"]] 
         # omitting "B0" for it is almost constant (close to max buffer)
         # omitting "B_last" for it increased indefinitely
         return data_return[data_return.columns].to_numpy() 
@@ -163,7 +166,7 @@ class BottleneckPrediction():
 
     def prepare_data(
         self, 
-        file_range : range
+        file_range : list
     ):
         '''Load and prepare data from multiple simulations for training and testing.
 
@@ -178,7 +181,7 @@ class BottleneckPrediction():
             levels, the y values include the designated bottleneck station (by number).
         '''
         # get number of attributes in the x values 
-        num_attr_for_x = len(SIM_STATIONS) + 1 if self.ibitd else len(SIM_STATIONS)
+        num_attr_for_x = self.num_stations+1 if self.ibitd else self.num_stations
         # get empty ndarrays for X and y 
         x = np.empty([0,self.n_steps_in, num_attr_for_x])
         y = np.empty([0,self.n_steps_out])
@@ -200,7 +203,8 @@ class BottleneckPrediction():
         # shuffle all observations 
         x_train, y_train = self._to_unison_shuffled_copies(x, y)
         
-        if self.iohey: # include_one_hot_encoding_of_y_label 
+        if self.iohey: 
+            # include_one_hot_encoding_of_y_label 
             y_train = self._to_one_hot(y_train)
 
         return x_train, y_train
@@ -211,7 +215,7 @@ class BottleneckPrediction():
                 
         # get custom optimizer with gardient clipping
         self.optimizer = Adam(
-            learning_rate = 0.001,
+            learning_rate = 0.0001,
             beta_1= 0.9,
             beta_2 = 0.999,
             epsilon = 1e-7,
@@ -219,25 +223,28 @@ class BottleneckPrediction():
             clipvalue=1.0)
 
         # get the number of features from the training data 
-        n_features = self.x_train.shape[2]*len(SIM_STATIONS)+1 if self.iohey else self.x_train.shape[2]
+        n_features = self.x_train.shape[2]
+
+        # update size of output layer
+        self.n_steps_out = self.n_steps_out*(self.num_stations+1)
 
         # define the model
         model = Sequential()
         # input layer 
         model.add(
             LSTM(
-                units=128, 
-                activation='relu', 
+                units=64, 
+                activation='tanh', 
                 return_sequences=True, 
                 input_shape=(self.n_steps_in, n_features),
-                recurrent_dropout=0.1
+                recurrent_dropout=0
                 )
             )
         # hidden layer 
         model.add(
             LSTM(
-                units=128, 
-                activation='relu'
+                units=64, 
+                activation='tanh'
                 )
             )
         # output layer
@@ -267,7 +274,7 @@ class BottleneckPrediction():
             mode='auto',
             baseline=None,
             restore_best_weights=True,
-            start_from_epoch=0
+            #start_from_epoch=0
         )
 
         # get callback to save models
@@ -285,7 +292,7 @@ class BottleneckPrediction():
             epochs = self.training_epochs, 
             verbose = 1, 
             shuffle = True,
-            batch_size = 16, 
+            batch_size = 256, 
             callbacks = [self.cp_stopper, self.cp_saver]) 
 
 
@@ -312,12 +319,17 @@ class BottleneckPrediction():
         plt.plot(self.model_hist.history['loss'], label="loss")
         plt.plot(self.model_hist.history['val_loss'], label="val_loss")
         plt.title(f"{self.mdl_scenario}_loss")
-        plt.ylim([0,2.5])
+        plt.ylim([0,1.5])
+        plt.savefig(f"training/{self.mdl_scenario}_loss.png", format="png")
         plt.show()
-        plt.savefig(f"{self.mdl_scenario}_loss.png", format="png")
 
 
     def describe_pred(self) -> None: 
+
+        # revert one hot encoding
+        if self.iohey:
+            self.y_test = self._reverse_one_hot(self.y_test)
+            self.y_pred = self._reverse_one_hot(self.y_pred)
 
         # eval (no one-hot-enc)
         assert self.y_test.shape == self.y_pred.shape
@@ -326,7 +338,7 @@ class BottleneckPrediction():
         eval_dict = {}
         for i in range(self.y_test.shape[0]): 
             y_t = self.y_test[i]
-            p_t = self.y_pred[i].astype(int)
+            p_t = np.rint(self.y_pred[i])
             res = [y==p for y, p in zip(y_t, p_t)]
             eval_dict[i] = res
 
@@ -344,7 +356,9 @@ class BottleneckPrediction():
         plt.title(self.mdl_scenario)
         plt.ylim(0, 1)
         #plt.xlim(0, 25)
-        plt.savefig(f"{self.mdl_scenario}_eval.png", format="png")
+        plt.savefig(f"training/{self.mdl_scenario}_eval.png", format="png")
+        plt.show()
+
 
     def plot_some_predictions(self, stride): 
 
@@ -435,7 +449,7 @@ class BottleneckPrediction():
 
     def _reverse_one_hot(self, data, nb_classes=5):
         # convert y to int
-        data = data.astype(int)
+        data = np.rint(data)
         # get dimensions
         nb_inputs = data.shape[0] 
         nb_outputs = data.shape[1] # before one-hot-encoding
