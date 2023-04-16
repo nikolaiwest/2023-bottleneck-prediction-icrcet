@@ -359,7 +359,7 @@ class BottleneckPrediction():
             _add = [1 if v else 0 for v in val]
             eval_list = [a+b for a, b in zip(eval_list, _add )]
 
-        # 
+        # evaluation list 
         eval_list = [e/self.y_test.shape[0] for e in eval_list]
 
         # plot the evaluation 
@@ -467,3 +467,45 @@ class BottleneckPrediction():
         # reshape and return 
         data = data.reshape([nb_inputs, int(nb_outputs/nb_classes), nb_classes])
         return np.array([d.argmax(axis=1).tolist() for d in data])
+
+
+class BottleneckBenchmark(BottleneckPrediction):
+    
+    def __init__(self, how: str, params: dict):
+        self.how = how
+        super().__init__(**params)
+
+    def run(self): 
+
+        # check if data can be loaded from drive
+        if not os.path.exists(f"data_prepared/data_benchmarking.pkl"):
+            # run data preparation
+            self.x_train, self.y_train = self.prepare_data(file_range=self.range_train)
+            self.x_test, self.y_test = self.prepare_data(file_range=self.range_test)
+            # save data
+            save_data((self.x_train, self.y_train, self.x_test, self.y_test), "data_prepared/data_benchmarking")
+        else: # load
+            self.x_train, self.y_train, self.x_test, self.y_test = load_data(path="data_prepared/", name=f"data_benchmarking")
+            print(f"Benchmarking: Data loaded from drive")
+        self.describe_data()
+
+        # ensure one hot encoding is disabled (not required for benchmarking)
+        self.iohey = False
+        # run naive prediction to get y_test 
+        self.get_benchmarks()
+
+    def get_benchmarks(self): 
+        if self.how == "naive":
+            y_pred = []
+            for i in range(self.x_test.shape[0]):
+                # get list of the last value of y_test
+                y = self.x_test[i][-1][-1] 
+                y_pred.append([y] * self.n_steps_out)
+            self.y_pred=np.array(y_pred)
+        elif self.how =="random":
+            y_pred = []
+            for i in range(self.x_test.shape[0]):
+                # get list of the last value of y_test
+                y = list(np.random.randint(low = self.num_stations+1, size=self.n_steps_out))
+                y_pred.append(y)
+            self.y_pred=np.array(y_pred)
