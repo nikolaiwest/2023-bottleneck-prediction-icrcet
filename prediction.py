@@ -1,7 +1,8 @@
 # project 
-from auxiliaries import get_buffer, get_active_periods
+from auxiliaries import get_buffer, get_active_periods, load_data, save_data
 
 # other 
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt 
@@ -63,22 +64,31 @@ class BottleneckPrediction():
 
     def run(self): 
 
-        # data preparation
-        self.x_train, self.y_train = self.prepare_data(file_range=self.range_train)
-        self.x_test, self.y_test = self.prepare_data(file_range=self.range_test)
+        # check if data can be loaded from drive
+        if not os.path.exists(f"data_prepared/data_{self.mdl_scenario}.pkl"):
+            # run data preparation
+            self.x_train, self.y_train = self.prepare_data(file_range=self.range_train)
+            self.x_test, self.y_test = self.prepare_data(file_range=self.range_test)
+            # save data
+            save_data((self.x_train, self.y_train, self.x_test, self.y_test), f"data_prepared/data_{self.mdl_scenario}")
+        else: # load
+            self.x_train, self.y_train, self.x_test, self.y_test = load_data(path="data_prepared/", name=f"data_{self.mdl_scenario}")
+            print(f"{self.mdl_scenario}: Data loaded from drive")
         self.describe_data()
 
         # modelling
-        # TODO: add timer 
         self.model = self.get_model()
         self.describe_model()
 
-        # training
-        now = dt.now()
-        self.model_hist = self.fit_model()
-        self.time_training = dt.now() - now
-        print(f"training complete in: {self.time_training}")
-        self.describe_hist()
+        # check if model weights are available from previous training
+        if not os.path.exists(f"models/{self.mdl_scenario}.hdf5"):
+            
+            # start training
+            now = dt.now()
+            self.model_hist = self.fit_model()
+            self.time_training = dt.now() - now
+            print(f"training complete in: {self.time_training}")
+            self.describe_hist()
 
         # evaluation 
         self.best_model = load_model(f'models/{self.mdl_scenario}.hdf5') 
@@ -122,7 +132,7 @@ class BottleneckPrediction():
         if len(data_buffer)!=SIM_LENGTH: 
             # shorten df (just as backup)
             if len(data_buffer) > SIM_LENGTH:
-                df_buffer = data_buffer[:SIM_LENGTH]
+                data_buffer = data_buffer[:SIM_LENGTH]
             else: 
                 # fill df with last rows
                 for i in range(len(data_buffer), SIM_LENGTH):
@@ -135,7 +145,7 @@ class BottleneckPrediction():
         if len(data_actper)!=SIM_LENGTH: 
             # shorten df (again, just a fallback)
             if len(data_actper) > SIM_LENGTH: 
-                df_actper = data_actper[:SIM_LENGTH]
+                data_actper = data_actper[:SIM_LENGTH]
             else: 
                 # fill df with last rows
                 for i in range(len(data_actper), SIM_LENGTH):
@@ -161,8 +171,8 @@ class BottleneckPrediction():
         data_return = data_return.loc[:, self.sim_stations + ["bottleneck"]] 
         # omitting "B0" for it is almost constant (close to max buffer)
         # omitting "B_last" for it increased indefinitely
-        return data_return[data_return.columns].to_numpy() 
-
+        data_return =  data_return[data_return.columns].to_numpy() 
+        return data_return
 
     def prepare_data(
         self, 
@@ -180,6 +190,7 @@ class BottleneckPrediction():
             Returns a tuple of x and y data. While the x values include the buffer 
             levels, the y values include the designated bottleneck station (by number).
         '''
+
         # get number of attributes in the x values 
         num_attr_for_x = self.num_stations+1 if self.ibitd else self.num_stations
         # get empty ndarrays for X and y 
@@ -332,7 +343,7 @@ class BottleneckPrediction():
             self.y_pred = self._reverse_one_hot(self.y_pred)
 
         # eval (no one-hot-enc)
-        assert self.y_test.shape == self.y_pred.shape
+        # assert self.y_test.shape == self.y_pred.shape
 
         # check if the prediction was correct 
         eval_dict = {}

@@ -1,7 +1,15 @@
 import numpy as np
 import pandas as pd
 import csv
+from pickle import dump, load
 
+def save_data(data: object, name: str) -> None:
+    file_pi = open(f'{name}.pkl', 'wb') 
+    dump(data, file_pi)
+
+def load_data(path: str, name: str) -> object:
+    file = open(f"{path}{name}.pkl", 'rb') 
+    return load(file)
 
 def write_new_row(path: str, row: list) -> None:
     with open(path, 'a+', newline='') as f:
