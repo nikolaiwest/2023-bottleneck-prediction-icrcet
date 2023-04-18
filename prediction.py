@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 
 from datetime import datetime as dt 
 
-from typing import Tuple
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import LSTM, Dense
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.optimizers import Adam
 
@@ -20,6 +19,27 @@ from tensorflow.keras.optimizers import Adam
 SIM_LENGTH = 10000 
 SIM_STATIONS = ["B1", "B2", "B3", "B4"] # stations under consideration
 SIM_SCENARIO = "10k_S2-S4+25%"
+
+
+class ResultEvaluation():
+
+    def __init__(self, name:str, y_test, y_pred, evaluation):
+        self.name = name
+        self.y_test = y_test
+        self.y_pred = y_pred
+        self.eval = evaluation
+
+    def get_name(self) -> str:
+        return self.name
+
+    def get_prediction(self) -> np.ndarray:
+        return self.y_pred
+    
+    def get_test_data(self) -> np.ndarray:
+        return self.y_test
+    
+    def get_evaluation(self) -> list:
+        return self.eval
 
 
 class BottleneckPrediction():
@@ -62,7 +82,7 @@ class BottleneckPrediction():
         # custom name to store the best model 
         self.mdl_scenario = mdl_scenario
 
-    def run(self): 
+    def run(self, verbose=False) -> ResultEvaluation: 
 
         # check if data can be loaded from drive
         if not os.path.exists(f"data_prepared/data_{self.mdl_scenario}.pkl"):
@@ -73,12 +93,15 @@ class BottleneckPrediction():
             save_data((self.x_train, self.y_train, self.x_test, self.y_test), f"data_prepared/data_{self.mdl_scenario}")
         else: # load
             self.x_train, self.y_train, self.x_test, self.y_test = load_data(path="data_prepared/", name=f"data_{self.mdl_scenario}")
-            print(f"{self.mdl_scenario}: Data loaded from drive")
-        self.describe_data()
+            if verbose: 
+                print(f"{self.mdl_scenario}: Data loaded from drive")
+        if verbose:
+            self.describe_data()
 
         # modelling
         self.model = self.get_model()
-        self.describe_model()
+        if verbose: 
+            self.describe_model()
 
         # check if model weights are available from previous training
         if not os.path.exists(f"models/{self.mdl_scenario}.hdf5"):
@@ -88,15 +111,28 @@ class BottleneckPrediction():
             self.model_hist = self.fit_model()
             self.time_training = dt.now() - now
             print(f"training complete in: {self.time_training}")
-            self.describe_hist()
+            if verbose:
+                self.describe_hist()
+        
+        else:
+            if verbose: 
+                print(f"{self.mdl_scenario}: Model loading from drive")
 
         # evaluation 
         self.best_model = load_model(f'models/{self.mdl_scenario}.hdf5') 
         self.y_pred = self.best_model.predict(self.x_test)
-        self.describe_pred()
+        self.eval = self.describe_pred(verbose=verbose)
 
         # 
-        self.plot_some_predictions(stride=int(len(self.y_pred)/10))
+        if verbose: 
+            self.plot_some_predictions(stride=int(len(self.y_pred)/10))
+
+        return ResultEvaluation(
+            name = self.mdl_scenario,
+            y_test = self.y_test,
+            y_pred = self.y_pred,
+            evaluation = self.eval,
+        )
 
     def load_sim_data(
         self,
@@ -307,11 +343,6 @@ class BottleneckPrediction():
             callbacks = [self.cp_stopper, self.cp_saver]) 
 
 
-    def describe(self):
-        # TODO: add print() to describe BottleneckPrediction
-        pass
-
-
     def describe_data(self) -> None:
         # describe data
         print(f"X_train: {self.x_train.shape}")
@@ -335,7 +366,7 @@ class BottleneckPrediction():
         plt.show()
 
 
-    def describe_pred(self) -> None: 
+    def describe_pred(self, verbose:bool) -> list: 
 
         # revert one hot encoding
         if self.iohey:
@@ -362,13 +393,18 @@ class BottleneckPrediction():
         # evaluation list 
         eval_list = [e/self.y_test.shape[0] for e in eval_list]
 
-        # plot the evaluation 
-        plt.plot(eval_list)
-        plt.title(self.mdl_scenario)
-        plt.ylim(0, 1)
-        #plt.xlim(0, 25)
-        plt.savefig(f"training/{self.mdl_scenario}_eval.png", format="png")
-        plt.show()
+        # make plot of evaluation
+        if verbose: 
+            # plot the evaluation 
+            plt.plot(eval_list)
+            plt.title(self.mdl_scenario)
+            plt.ylim(0, 1)
+            #plt.xlim(0, 25)
+            plt.savefig(f"training/{self.mdl_scenario}_eval.png", format="png")
+            plt.show()
+
+        # return evaluation as list 
+        return eval_list
 
 
     def plot_some_predictions(self, stride): 
@@ -471,11 +507,10 @@ class BottleneckPrediction():
 
 class BottleneckBenchmark(BottleneckPrediction):
     
-    def __init__(self, how: str, params: dict):
-        self.how = how
+    def __init__(self, params: dict):
         super().__init__(**params)
 
-    def run(self): 
+    def run(self, verbose=False) -> ResultEvaluation:  
 
         # check if data can be loaded from drive
         if not os.path.exists(f"data_prepared/data_benchmarking.pkl"):
@@ -486,26 +521,62 @@ class BottleneckBenchmark(BottleneckPrediction):
             save_data((self.x_train, self.y_train, self.x_test, self.y_test), "data_prepared/data_benchmarking")
         else: # load
             self.x_train, self.y_train, self.x_test, self.y_test = load_data(path="data_prepared/", name=f"data_benchmarking")
-            print(f"Benchmarking: Data loaded from drive")
-        self.describe_data()
+            if verbose:
+                print(f"Benchmarking: Data loaded from drive")
+        
+        if verbose:
+            self.describe_data()
 
         # ensure one hot encoding is disabled (not required for benchmarking)
         self.iohey = False
-        # run naive prediction to get y_test 
-        self.get_benchmarks()
 
-    def get_benchmarks(self): 
-        if self.how == "naive":
+
+    def get_benchmarks(self, how: str ) -> ResultEvaluation: 
+        # predict the last bottleneck from the training data for y_test 
+        if how == "last":
             y_pred = []
             for i in range(self.x_test.shape[0]):
                 # get list of the last value of y_test
                 y = self.x_test[i][-1][-1] 
                 y_pred.append([y] * self.n_steps_out)
             self.y_pred=np.array(y_pred)
-        elif self.how =="random":
+
+        # predict a random value for the next bottleneck 
+        elif how =="random":
             y_pred = []
             for i in range(self.x_test.shape[0]):
-                # get list of the last value of y_test
+                # get list of the random values for y_pred
                 y = list(np.random.randint(low = self.num_stations+1, size=self.n_steps_out))
                 y_pred.append(y)
             self.y_pred=np.array(y_pred)
+
+        # predict only the second station as bottleneck 
+        elif how =="naiveM2":
+            y_pred = []
+            for i in range(self.x_test.shape[0]):
+                # get 'n_steps_out' values of [1] for y_pred (corresponds to M2)
+                y = [1] * self.n_steps_out
+                y_pred.append(y)
+            self.y_pred=np.array(y_pred)
+
+        # predict only the fourth station as bottleneck 
+        elif how =="naiveM4":
+            y_pred = []
+            for i in range(self.x_test.shape[0]):
+                # get 'n_steps_out' values of [23] for y_pred (corresponds to M4)
+                y = [3] * self.n_steps_out
+                y_pred.append(y)
+            self.y_pred=np.array(y_pred)
+        
+        else:
+            raise ValueError(f"{how} is no valid benchmark.")
+        
+        # get evaluation for benchmark
+        self.eval = self.describe_pred(verbose=False)
+
+        return ResultEvaluation(
+            name = f"benchmark_{how}",
+            y_test = self.y_test,
+            y_pred = self.y_pred,
+            evaluation = self.eval,
+        )

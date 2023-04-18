@@ -120,5 +120,8 @@ def calc_active_periods(events: pd.DataFrame) -> pd.DataFrame:
     # determine bottleneck station
     active_periods['bottleneck'] = active_periods.idxmax(axis=1)
     return active_periods
-#%%
 
+def get_avg_evalulation(results : list): 
+    '''Returns the average evaluation from a list of ResultEvaluation's.'''
+    res = [results[i].get_evaluation() for i in range(len(results))]
+    return [sum(x)/len(x) for x in zip(*res)]
